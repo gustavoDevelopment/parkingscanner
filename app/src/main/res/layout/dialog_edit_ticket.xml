@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <EditText
+            android:id="@+id/editBoleta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Boleta"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editInmueble"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Inmueble"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editVigilanteIngreso"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Vigilante Ingreso"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editVigilanteSalida"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Vigilante Salida"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editPlaca"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Placa"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editTipoVehiculo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Tipo Vehículo"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editFechaEntrada"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Fecha Entrada"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editFechaSalida"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Fecha Salida"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editTiempo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Tiempo"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/editTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Total"
+            android:inputType="text"
+            android:layout_marginBottom="8dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Medio de Pago"
+            android:textSize="12sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="2dp"/>
+
+        <Spinner
+            android:id="@+id/spinnerMedioPago"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"/>
+
+    </LinearLayout>
+</ScrollView>
