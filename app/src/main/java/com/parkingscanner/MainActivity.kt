@@ -2,6 +2,8 @@ package com.parkingscanner
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.ListView
@@ -13,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.firebase.auth.FirebaseAuth
 import com.parkingscanner.data.repository.ScannerRepositoryImpl
 import com.parkingscanner.GlobalIndexActivity
 import com.parkingscanner.domain.model.ScannerSummary
@@ -85,6 +88,24 @@ class MainActivity : AppCompatActivity() {
         fabGlobalIndex.setOnClickListener {
             startActivity(Intent(this, GlobalIndexActivity::class.java))
         }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user != null) {
+            menu.add(0, 1, 0, "Cerrar sesión (${user.email ?: user.displayName})")
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 1) {
+            FirebaseAuth.getInstance().signOut()
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+        }
+        return super.onOptionsItemSelected(item)
     }
 
     private fun updateScannerList(summaries: List<ScannerSummary>) {
