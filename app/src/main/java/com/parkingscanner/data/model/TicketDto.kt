@@ -8,9 +8,12 @@ data class TicketDto(
     val boleta: String = "",
     val inmueble: String = "",
     val vigilanteIngreso: String = "",
+    val vigilanteIngresoCodigo: Int = 0,
     val vigilanteSalida: String = "",
+    val vigilanteSalidaCodigo: Int = 0,
     val placa: String = "",
     val tipoVehiculo: String = "",
+    val tipoVehiculoCodigo: Int = 0,
     val fechaEntrada: String = "",
     val fechaSalida: String = "",
     val tiempo: String = "",
@@ -18,6 +21,8 @@ data class TicketDto(
     val extractedText: String,
     val data: JSONObject,
     val medioPagoCodigo: Int = 0,
+    val imagePath: String = "",
+    val imageUrl: String = "",
     val timestamp: String
 ) {
     companion object {
@@ -27,41 +32,51 @@ data class TicketDto(
                 boleta = json.optString("boleta", ""),
                 inmueble = json.optString("inmueble", ""),
                 vigilanteIngreso = json.optString("vigilanteIngreso", ""),
+                vigilanteIngresoCodigo = json.optInt("vigilanteIngresoCodigo", 0),
                 vigilanteSalida = json.optString("vigilanteSalida", ""),
+                vigilanteSalidaCodigo = json.optInt("vigilanteSalidaCodigo", 0),
                 placa = json.optString("placa", ""),
                 tipoVehiculo = json.optString("tipoVehiculo", ""),
+                tipoVehiculoCodigo = json.optInt("tipoVehiculoCodigo", 0),
                 fechaEntrada = json.optString("fechaEntrada", ""),
                 fechaSalida = json.optString("fechaSalida", ""),
                 tiempo = json.optString("tiempo", ""),
                 total = json.optString("total", ""),
-                extractedText = json.getString("extractedText"),
+                extractedText = json.optString("extractedText", ""),
                 data = json.optJSONObject("data") ?: JSONObject(),
                 medioPagoCodigo = json.optInt("medioPagoCodigo", 0),
-                timestamp = json.getString("timestamp")
+                imagePath = json.optString("imagePath", ""),
+                imageUrl = json.optString("imageUrl", ""),
+                timestamp = json.optString("timestamp", System.currentTimeMillis().toString())
             )
         }
-        
-        fun toJson(ticketDto: TicketDto): JSONObject {
+
+        fun toJson(dto: TicketDto): JSONObject {
             val json = JSONObject()
-            json.put("id", ticketDto.id)
-            json.put("boleta", ticketDto.boleta)
-            json.put("inmueble", ticketDto.inmueble)
-            json.put("vigilanteIngreso", ticketDto.vigilanteIngreso)
-            json.put("vigilanteSalida", ticketDto.vigilanteSalida)
-            json.put("placa", ticketDto.placa)
-            json.put("tipoVehiculo", ticketDto.tipoVehiculo)
-            json.put("fechaEntrada", ticketDto.fechaEntrada)
-            json.put("fechaSalida", ticketDto.fechaSalida)
-            json.put("tiempo", ticketDto.tiempo)
-            json.put("total", ticketDto.total)
-            json.put("extractedText", ticketDto.extractedText)
-            json.put("data", ticketDto.data)
-            json.put("medioPagoCodigo", ticketDto.medioPagoCodigo)
-            json.put("timestamp", ticketDto.timestamp)
+            json.put("id", dto.id)
+            json.put("boleta", dto.boleta)
+            json.put("inmueble", dto.inmueble)
+            json.put("vigilanteIngreso", dto.vigilanteIngreso)
+            json.put("vigilanteIngresoCodigo", dto.vigilanteIngresoCodigo)
+            json.put("vigilanteSalida", dto.vigilanteSalida)
+            json.put("vigilanteSalidaCodigo", dto.vigilanteSalidaCodigo)
+            json.put("placa", dto.placa)
+            json.put("tipoVehiculo", dto.tipoVehiculo)
+            json.put("tipoVehiculoCodigo", dto.tipoVehiculoCodigo)
+            json.put("fechaEntrada", dto.fechaEntrada)
+            json.put("fechaSalida", dto.fechaSalida)
+            json.put("tiempo", dto.tiempo)
+            json.put("total", dto.total)
+            json.put("extractedText", dto.extractedText)
+            json.put("data", dto.data)
+            json.put("medioPagoCodigo", dto.medioPagoCodigo)
+            json.put("imagePath", dto.imagePath)
+            json.put("imageUrl", dto.imageUrl)
+            json.put("timestamp", dto.timestamp)
             return json
         }
     }
-    
+
     fun toDomain(): com.parkingscanner.domain.model.Ticket {
         val dataMap = mutableMapOf<String, String>()
         val keys = data.keys()
@@ -69,22 +84,18 @@ data class TicketDto(
             val key = keys.next()
             dataMap[key] = data.optString(key, "")
         }
-        
-        // Generar ID si está vacío
-        val ticketId = if (id.isEmpty()) {
-            "ticket_${timestamp}_${boleta}"
-        } else {
-            id
-        }
-        
+        val ticketId = id.ifEmpty { "ticket_${timestamp}_${boleta}" }
         return com.parkingscanner.domain.model.Ticket(
             id = ticketId,
             boleta = boleta,
             inmueble = inmueble,
             vigilanteIngreso = vigilanteIngreso,
+            vigilanteIngresoCodigo = vigilanteIngresoCodigo,
             vigilanteSalida = vigilanteSalida,
+            vigilanteSalidaCodigo = vigilanteSalidaCodigo,
             placa = placa,
             tipoVehiculo = tipoVehiculo,
+            tipoVehiculoCodigo = tipoVehiculoCodigo,
             fechaEntrada = fechaEntrada,
             fechaSalida = fechaSalida,
             tiempo = tiempo,
@@ -92,11 +103,9 @@ data class TicketDto(
             extractedText = extractedText,
             data = dataMap,
             medioPagoCodigo = medioPagoCodigo,
-            timestamp = try {
-                Date(timestamp.toLong())
-            } catch (e: Exception) {
-                Date()
-            }
+            imagePath = imagePath,
+            imageUrl = imageUrl,
+            timestamp = try { Date(timestamp.toLong()) } catch (_: Exception) { Date() }
         )
     }
 }

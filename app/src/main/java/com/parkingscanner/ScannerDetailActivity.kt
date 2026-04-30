@@ -40,8 +40,11 @@ import com.parkingscanner.domain.usecase.*
 import com.parkingscanner.presentation.viewmodel.ScannerViewModel
 import com.parkingscanner.presentation.viewmodel.ScannerViewModelFactory
 import com.parkingscanner.data.repository.GlobalTicketIndex
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 
 class ScannerDetailActivity : AppCompatActivity() {
 
@@ -382,48 +385,44 @@ class ScannerDetailActivity : AppCompatActivity() {
     }
     
     private fun showTicketDetailDialog(ticket: Ticket) {
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("Detalle del Ticket")
-        
-        val detailText = StringBuilder()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
 
-        if (ticket.boleta.isNotEmpty()) {
-            detailText.append("Boleta: ${ticket.boleta}\n")
+        // Image (local file first, then URL fallback)
+        val localFile = ticket.imagePath.takeIf { it.isNotEmpty() }?.let { File(it) }
+        if (localFile?.exists() == true) {
+            val imageView = ImageView(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 600
+                ).also { it.bottomMargin = 24 }
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setImageBitmap(android.graphics.BitmapFactory.decodeFile(localFile.absolutePath))
+            }
+            layout.addView(imageView)
         }
-        if (ticket.inmueble.isNotEmpty()) {
-            detailText.append("Inmueble: ${ticket.inmueble}\n")
-        }
-        if (ticket.vigilanteIngreso.isNotEmpty()) {
-            detailText.append("Vigilante Ingreso: ${ticket.vigilanteIngreso}\n")
-        }
-        if (ticket.vigilanteSalida.isNotEmpty()) {
-            detailText.append("Vigilante Salida: ${ticket.vigilanteSalida}\n")
-        }
-        if (ticket.placa.isNotEmpty()) {
-            detailText.append("Placa: ${ticket.placa}\n")
-        }
-        if (ticket.tipoVehiculo.isNotEmpty()) {
-            detailText.append("Tipo Vehículo: ${ticket.tipoVehiculo}\n")
-        }
-        if (ticket.fechaEntrada.isNotEmpty()) {
-            detailText.append("Fecha Entrada: ${ticket.fechaEntrada}\n")
-        }
-        if (ticket.fechaSalida.isNotEmpty()) {
-            detailText.append("Fecha Salida: ${ticket.fechaSalida}\n")
-        }
-        if (ticket.tiempo.isNotEmpty()) {
-            detailText.append("Tiempo: ${ticket.tiempo}\n")
-        }
-        if (ticket.total.isNotEmpty()) {
-            detailText.append("Total a Pagar: ${ticket.total}\n")
-        }
-        
-        builder.setMessage(detailText.toString())
-        builder.setPositiveButton("Cerrar", null)
-        builder.setNeutralButton("Editar") { _, _ ->
-            showEditTicketDialog(ticket)
-        }
-        builder.show()
+
+        val detailText = StringBuilder()
+        if (ticket.boleta.isNotEmpty()) detailText.append("Boleta: ${ticket.boleta}\n")
+        if (ticket.inmueble.isNotEmpty()) detailText.append("Inmueble: ${ticket.inmueble}\n")
+        if (ticket.vigilanteIngreso.isNotEmpty()) detailText.append("Vigilante Ingreso: ${ticket.vigilanteIngreso}\n")
+        if (ticket.vigilanteSalida.isNotEmpty()) detailText.append("Vigilante Salida: ${ticket.vigilanteSalida}\n")
+        if (ticket.placa.isNotEmpty()) detailText.append("Placa: ${ticket.placa}\n")
+        if (ticket.tipoVehiculo.isNotEmpty()) detailText.append("Tipo Vehículo: ${ticket.tipoVehiculo}\n")
+        if (ticket.fechaEntrada.isNotEmpty()) detailText.append("Fecha Entrada: ${ticket.fechaEntrada}\n")
+        if (ticket.fechaSalida.isNotEmpty()) detailText.append("Fecha Salida: ${ticket.fechaSalida}\n")
+        if (ticket.tiempo.isNotEmpty()) detailText.append("Tiempo: ${ticket.tiempo}\n")
+        if (ticket.total.isNotEmpty()) detailText.append("Total a Pagar: ${ticket.total}\n")
+
+        layout.addView(android.widget.TextView(this).apply { text = detailText.toString() })
+
+        AlertDialog.Builder(this)
+            .setTitle("Detalle del Ticket")
+            .setView(layout)
+            .setPositiveButton("Cerrar", null)
+            .setNeutralButton("Editar") { _, _ -> showEditTicketDialog(ticket) }
+            .show()
     }
     
     private fun showEditTicketDialog(ticket: Ticket) {
@@ -982,6 +981,9 @@ class ScannerDetailActivity : AppCompatActivity() {
             .ifEmpty { jsonObject.optString("totalAPagar", "") }
             .ifEmpty { jsonObject.optString("valorAPagar", "") }
 
+        // Save image locally
+        val imagePath = currentImageBitmap?.let { saveImageLocally(uniqueId, it) } ?: ""
+
         val ticket = Ticket(
             id = uniqueId,
             boleta = newBoleta,
@@ -996,8 +998,10 @@ class ScannerDetailActivity : AppCompatActivity() {
             total = rawTotal,
             extractedText = extractedText,
             data = dataMap,
-            medioPagoCodigo = selectedMedioPago?.codigo ?: 0
+            medioPagoCodigo = selectedMedioPago?.codigo ?: 0,
+            imagePath = imagePath
         )
+
         
         Log.d("ScannerDetailActivity", "Ticket created with:")
         Log.d("ScannerDetailActivity", "  - boleta: ${ticket.boleta}")
@@ -1074,4 +1078,14 @@ class ScannerDetailActivity : AppCompatActivity() {
         super.onDestroy()
         cameraService.releaseCamera()
     }
+
+    private fun saveImageLocally(ticketId: String, bitmap: Bitmap): String {
+        return try {
+            val imagesDir = File(filesDir, "ParkingScanner/images").also { it.mkdirs() }
+            val file = File(imagesDir, "$ticketId.jpg")
+            FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+            file.absolutePath
+        } catch (_: Exception) { "" }
+    }
+
 }

@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.parkingscanner.data.repository.CatalogStorage
 import com.parkingscanner.domain.model.*
+import kotlin.concurrent.thread
 
 class CatalogManagementActivity : AppCompatActivity() {
 
@@ -149,7 +150,7 @@ class CatalogManagementActivity : AppCompatActivity() {
                     val idx = CatalogoVigilantes.vigilantes.indexOfFirst { it.codigo == vigilante.codigo }
                     if (idx >= 0) {
                         CatalogoVigilantes.vigilantes[idx] = vigilante.copy(nombre = nuevoNombre)
-                        catalogStorage.save()
+                        thread { catalogStorage.save() }
                         refreshVigilantesList()
                         Toast.makeText(this, "Vigilante actualizado", Toast.LENGTH_SHORT).show()
                     }
@@ -172,7 +173,7 @@ class CatalogManagementActivity : AppCompatActivity() {
                 val nombre = nombreInput.text.toString().trim()
                 if (nombre.isNotEmpty()) {
                     CatalogoVigilantes.agregar(nombre)
-                    catalogStorage.save()
+                    thread { catalogStorage.save() }
                     refreshVigilantesList()
                     Toast.makeText(this, "Vigilante agregado", Toast.LENGTH_SHORT).show()
                 }
@@ -198,7 +199,7 @@ class CatalogManagementActivity : AppCompatActivity() {
                     val idx = CatalogoVehiculos.vehiculos.indexOfFirst { it.codigo == vehiculo.codigo }
                     if (idx >= 0) {
                         CatalogoVehiculos.vehiculos[idx] = vehiculo.copy(tipo = nuevoTipo)
-                        catalogStorage.save()
+                        thread { catalogStorage.save() }
                         refreshVehiculosList()
                         Toast.makeText(this, "Vehiculo actualizado", Toast.LENGTH_SHORT).show()
                     }
@@ -221,7 +222,7 @@ class CatalogManagementActivity : AppCompatActivity() {
                 val tipo = tipoInput.text.toString().trim()
                 if (tipo.isNotEmpty()) {
                     CatalogoVehiculos.agregar(tipo)
-                    catalogStorage.save()
+                    thread { catalogStorage.save() }
                     refreshVehiculosList()
                     Toast.makeText(this, "Vehiculo agregado", Toast.LENGTH_SHORT).show()
                 }
@@ -252,7 +253,7 @@ class CatalogManagementActivity : AppCompatActivity() {
                             tipo = nuevoTipo,
                             computa = checkComputa.isChecked
                         )
-                        catalogStorage.save()
+                        thread { catalogStorage.save() }
                         refreshMediosPagoList()
                         Toast.makeText(this, "Medio de pago actualizado", Toast.LENGTH_SHORT).show()
                     }
@@ -276,7 +277,7 @@ class CatalogManagementActivity : AppCompatActivity() {
                 val tipo = tipoInput.text.toString().trim()
                 if (tipo.isNotEmpty()) {
                     CatalogoMediosPago.agregar(tipo, checkComputa.isChecked)
-                    catalogStorage.save()
+                    thread { catalogStorage.save() }
                     refreshMediosPagoList()
                     Toast.makeText(this, "Medio de pago agregado", Toast.LENGTH_SHORT).show()
                 }
