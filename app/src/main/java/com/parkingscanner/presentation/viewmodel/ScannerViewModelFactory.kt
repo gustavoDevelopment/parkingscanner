@@ -17,7 +17,8 @@ class ScannerViewModelFactory(
     private val closeScannerUseCase: CloseScannerUseCase,
     private val deleteScannerUseCase: DeleteScannerUseCase,
     private val exportToCsvUseCase: ExportToCsvUseCase,
-    private val renameScannerUseCase: RenameScannerUseCase
+    private val renameScannerUseCase: RenameScannerUseCase,
+    private val updateDescriptionUseCase: UpdateDescriptionUseCase
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -36,7 +37,8 @@ class ScannerViewModelFactory(
                 closeScannerUseCase,
                 deleteScannerUseCase,
                 exportToCsvUseCase,
-                renameScannerUseCase
+                renameScannerUseCase,
+                updateDescriptionUseCase
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")

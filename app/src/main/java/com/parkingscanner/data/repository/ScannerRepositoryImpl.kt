@@ -546,6 +546,21 @@ class ScannerRepositoryImpl(private val context: Context) : ScannerRepository {
         }
     }
 
+    override suspend fun updateDescription(name: String, description: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val descFile = File(parkingScannerDir, "descriptions.json")
+            val obj = if (descFile.exists()) JSONObject(descFile.readText()) else JSONObject()
+            if (description.isNotEmpty()) obj.put(name, description) else obj.remove(name)
+            descFile.writeText(obj.toString())
+            // Sync to Firestore
+            try {
+                val ref = scannersRef() ?: return@withContext Result.success(Unit)
+                Tasks.await(ref.document(name).update("description", description))
+            } catch (_: Exception) {}
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
     override suspend fun exportToTxt(scannerName: String): Result<File> = withContext(Dispatchers.IO) {
         try { Result.success(File(parkingScannerDir, "$scannerName.txt")) }
         catch (e: Exception) { Result.failure(e) }

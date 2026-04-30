@@ -47,7 +47,8 @@ class MainActivity : AppCompatActivity() {
             CloseScannerUseCase(repository),
             DeleteScannerUseCase(repository),
             ExportToCsvUseCase(repository),
-            RenameScannerUseCase(repository)
+            RenameScannerUseCase(repository),
+            UpdateDescriptionUseCase(repository)
         )
         viewModel = ViewModelProvider(this, factory)[ScannerViewModel::class.java]
 
@@ -161,10 +162,15 @@ class MainActivity : AppCompatActivity() {
 
         val cal = Calendar.getInstance()
 
+        val existingDesc = editingName?.let { name ->
+            viewModel.uiState.value?.scannerSummaries?.find { it.name == name }?.description ?: ""
+        } ?: ""
+
         val descLabel = TextView(this).apply { text = "Descripción" }
         val descInput = EditText(this).apply {
             hint = "Descripcion del recorrido"
             inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setText(existingDesc)
         }
 
         val yearLabel = TextView(this).apply { text = "Año" }
@@ -228,12 +234,13 @@ class MainActivity : AppCompatActivity() {
                         viewModel.createScanner(newName, desc)
                     }
                 } else {
-                    android.util.Log.d("RENAME", "btn: '$editingName' -> '$newName'")
-                    if (newName == editingName) {
-                        Toast.makeText(this, "El nombre no cambió", Toast.LENGTH_SHORT).show()
-                    } else {
+                    if (newName != editingName) {
                         viewModel.renameScanner(editingName, newName)
-                        Toast.makeText(this, "Renombrando...", Toast.LENGTH_SHORT).show()
+                        if (desc.isNotEmpty()) viewModel.updateScannerDescription(newName, desc)
+                    } else if (desc != existingDesc) {
+                        viewModel.updateScannerDescription(editingName, desc)
+                    } else {
+                        Toast.makeText(this, "Sin cambios", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

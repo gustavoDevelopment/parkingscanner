@@ -31,7 +31,8 @@ class ScannerViewModel(
     private val closeScannerUseCase: CloseScannerUseCase,
     private val deleteScannerUseCase: DeleteScannerUseCase,
     private val exportToCsvUseCase: ExportToCsvUseCase,
-    private val renameScannerUseCase: RenameScannerUseCase
+    private val renameScannerUseCase: RenameScannerUseCase,
+    private val updateDescriptionUseCase: UpdateDescriptionUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableLiveData(ScannerUiState())
@@ -222,6 +223,13 @@ class ScannerViewModel(
                 .onFailure { error ->
                     _uiState.value = _uiState.value?.copy(isLoading = false, error = error.message)
                 }
+        }
+    }
+
+    fun updateScannerDescription(name: String, description: String) {
+        viewModelScope.launch {
+            updateDescriptionUseCase(name, description)
+            loadScannerList()
         }
     }
 

@@ -140,7 +140,8 @@ class ScannerDetailActivity : AppCompatActivity() {
             closeScannerUseCase,
             deleteScannerUseCase,
             exportToCsvUseCase,
-            RenameScannerUseCase(repository)
+            RenameScannerUseCase(repository),
+            UpdateDescriptionUseCase(repository)
         )
         viewModel = ViewModelProvider(this, factory)[ScannerViewModel::class.java]
 
