@@ -73,6 +73,7 @@ class ScannerDetailActivity : AppCompatActivity() {
     private lateinit var legendQr: TextView
     private lateinit var legendAnulado: TextView
     private lateinit var statsFaltantes: TextView
+    private lateinit var btnCorregirTotales: TextView
 
     private lateinit var cameraStatusText: TextView
     private lateinit var ticketsTitleView: TextView
@@ -138,7 +139,8 @@ class ScannerDetailActivity : AppCompatActivity() {
             deleteAllScannersUseCase,
             closeScannerUseCase,
             deleteScannerUseCase,
-            exportToCsvUseCase
+            exportToCsvUseCase,
+            RenameScannerUseCase(repository)
         )
         viewModel = ViewModelProvider(this, factory)[ScannerViewModel::class.java]
 
@@ -164,6 +166,7 @@ class ScannerDetailActivity : AppCompatActivity() {
         legendQr = findViewById(R.id.legendQr)
         legendAnulado = findViewById(R.id.legendAnulado)
         statsFaltantes = findViewById(R.id.statsFaltantes)
+        btnCorregirTotales = findViewById(R.id.btnCorregirTotales)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -308,6 +311,41 @@ class ScannerDetailActivity : AppCompatActivity() {
         } else {
             statsFaltantes.visibility = View.GONE
         }
+
+        // Show fix-totals button if any ticket has total > tiempo-based amount
+        val corregibles = tickets.count { t ->
+            val tiempoAmt = parseTiempoToAmount(t.tiempo)
+            val totalAmt = parseColombianAmount(t.total)
+            tiempoAmt > 0 && totalAmt > tiempoAmt
+        }
+        if (corregibles > 0) {
+            btnCorregirTotales.text = "⚡ Corregir $corregibles total(es) por tiempo"
+            btnCorregirTotales.visibility = View.VISIBLE
+            btnCorregirTotales.setOnClickListener { corregirTotalesPorTiempo() }
+        } else {
+            btnCorregirTotales.visibility = View.GONE
+        }
+    }
+
+    private fun corregirTotalesPorTiempo() {
+        val toFix = currentTickets.filter { t ->
+            val tiempoAmt = parseTiempoToAmount(t.tiempo)
+            val totalAmt = parseColombianAmount(t.total)
+            tiempoAmt > 0 && totalAmt > tiempoAmt
+        }
+        if (toFix.isEmpty()) return
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Corregir totales")
+            .setMessage("Se corregirán ${toFix.size} ticket(s) cuyo total supera el valor por tiempo.\n\n¿Continuar?")
+            .setPositiveButton("Corregir") { _, _ ->
+                val corrected = toFix.map { ticket ->
+                    ticket.copy(total = parseTiempoToAmount(ticket.tiempo).toLong().toString())
+                }
+                viewModel.updateTicketsBulk(corrected)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private data class BoletaAnalysis(
@@ -984,10 +1022,22 @@ class ScannerDetailActivity : AppCompatActivity() {
         }
         
         val uniqueId = "ticket_${newBoleta.trim()}"
-        
-        val rawTotal = jsonObject.optString("total", "")
-            .ifEmpty { jsonObject.optString("totalAPagar", "") }
-            .ifEmpty { jsonObject.optString("valorAPagar", "") }
+
+        val rawTotal = run {
+            val ocr = jsonObject.optString("total", "")
+                .ifEmpty { jsonObject.optString("totalAPagar", "") }
+                .ifEmpty { jsonObject.optString("valorAPagar", "") }
+            val ocrAmount = parseColombianAmount(ocr)
+            if (ocrAmount > 0) {
+                // Total legible — úsalo directamente
+                ocr
+            } else {
+                // Total vacío/ilegible — calcula por tiempo
+                val tiempo = jsonObject.optString("tiempo", "")
+                val tiempoAmount = parseTiempoToAmount(tiempo)
+                if (tiempoAmount > 0) tiempoAmount.toLong().toString() else ocr
+            }
+        }
 
         // Save image locally
         val imagePath = currentImageBitmap?.let { saveImageLocally(uniqueId, it) } ?: ""
@@ -1062,13 +1112,26 @@ class ScannerDetailActivity : AppCompatActivity() {
         return rotatedBitmap
     }
 
-    private fun effectiveAmount(total: String, tiempo: String): Double {
-        val hours = Regex("\\d+").find(tiempo)?.value?.toDoubleOrNull() ?: 0.0
-        val fromTiempo = hours * 1000.0
-        val fromTotal = parseColombianAmount(total)
+    private fun parseTiempoToAmount(tiempo: String): Double {
+        if (tiempo.isBlank()) return 0.0
+        val lower = tiempo.lowercase()
+        val numbers = Regex("\\d+").findAll(tiempo).map { it.value.toDouble() }.toList()
+        if (numbers.isEmpty()) return 0.0
         return when {
-            fromTiempo > 0.0 -> fromTiempo
-            else -> fromTotal
+            lower.contains("minuto") && !lower.contains("hora") -> numbers[0] / 60.0 * 1000.0
+            lower.contains("hora") && lower.contains("minuto") && numbers.size >= 2 ->
+                (numbers[0] + numbers[1] / 60.0) * 1000.0
+            else -> numbers[0] * 1000.0
+        }
+    }
+
+    private fun effectiveAmount(total: String, tiempo: String): Double {
+        val fromTotal = parseColombianAmount(total)
+        val fromTiempo = parseTiempoToAmount(tiempo)
+        return when {
+            fromTotal > 0.0 -> fromTotal   // total impreso = fuente de verdad
+            fromTiempo > 0.0 -> fromTiempo // fallback si OCR no leyó el total
+            else -> 0.0
         }
     }
 

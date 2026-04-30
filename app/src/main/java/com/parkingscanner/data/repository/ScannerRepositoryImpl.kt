@@ -475,6 +475,64 @@ class ScannerRepositoryImpl(private val context: Context) : ScannerRepository {
         }
     }
 
+    override suspend fun renameScanner(oldName: String, newName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("RENAME", "start: '$oldName' -> '$newName'")
+
+            // Rename local JSON file (copy+delete since renameTo can fail cross-volume)
+            val oldFile = File(parkingScannerDir, "$oldName.json")
+            val newFile = File(parkingScannerDir, "$newName.json")
+            if (oldFile.exists()) {
+                newFile.writeText(oldFile.readText())
+                oldFile.delete()
+                android.util.Log.d("RENAME", "file renamed, newFile.exists=${newFile.exists()}")
+            } else {
+                android.util.Log.e("RENAME", "oldFile not found: ${oldFile.absolutePath}")
+            }
+
+            // Update descriptions.json
+            val descFile = File(parkingScannerDir, "descriptions.json")
+            if (descFile.exists()) {
+                val obj = JSONObject(descFile.readText())
+                if (obj.has(oldName)) {
+                    obj.put(newName, obj.getString(oldName))
+                    obj.remove(oldName)
+                    descFile.writeText(obj.toString())
+                }
+            }
+
+            // Update global_index.json
+            GlobalTicketIndex(context).renameScanner(oldName, newName)
+
+            // Firestore: copy tickets to new doc, delete old
+            try {
+                val ref = scannersRef() ?: throw Exception("not logged in")
+                val db = FirebaseFirestore.getInstance()
+                val oldTickets = Tasks.await(ref.document(oldName).collection("tickets").get())
+                android.util.Log.d("RENAME", "fs tickets to move: ${oldTickets.size()}")
+                val newTicketsRef = ref.document(newName).collection("tickets")
+                var batch = db.batch()
+                var count = 0
+                for (doc in oldTickets.documents) {
+                    val data = doc.data ?: continue
+                    batch.set(newTicketsRef.document(doc.id), data)
+                    batch.delete(doc.reference)
+                    if (++count == 500) { Tasks.await(batch.commit()); batch = db.batch(); count = 0 }
+                }
+                if (count > 0) Tasks.await(batch.commit())
+                val oldMeta = Tasks.await(ref.document(oldName).get()).data ?: emptyMap<String, Any>()
+                Tasks.await(ref.document(newName).set(oldMeta + mapOf("lastUpdated" to Timestamp.now()), SetOptions.merge()))
+                Tasks.await(ref.document(oldName).delete())
+                android.util.Log.d("RENAME", "fs rename done")
+            } catch (e: Exception) { android.util.Log.e("RENAME", "fs rename error", e) }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            android.util.Log.e("RENAME", "rename failed", e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun deleteAllScanners(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val jsonFiles = parkingScannerDir.listFiles { _, n ->

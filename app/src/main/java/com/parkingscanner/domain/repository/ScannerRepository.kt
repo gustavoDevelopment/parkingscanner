@@ -16,6 +16,7 @@ interface ScannerRepository {
     suspend fun deleteAllTickets(scannerName: String): Result<Unit>
     suspend fun closeScanner(scannerName: String): Result<Unit>
     suspend fun deleteScanner(name: String): Result<Unit>
+    suspend fun renameScanner(oldName: String, newName: String): Result<Unit>
     suspend fun deleteAllScanners(): Result<Unit>
     suspend fun exportToTxt(scannerName: String): Result<File>
     suspend fun exportToCsv(scannerName: String): Result<File>

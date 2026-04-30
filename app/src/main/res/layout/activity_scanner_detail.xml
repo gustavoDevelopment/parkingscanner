@@ -156,6 +156,20 @@
             android:gravity="center"
             android:visibility="gone" />
 
+        <!-- Botón corregir totales -->
+        <TextView
+            android:id="@+id/btnCorregirTotales"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:padding="6dp"
+            android:text="⚡ Corregir totales por tiempo"
+            android:textSize="12sp"
+            android:textColor="#E65100"
+            android:background="#FFF3E0"
+            android:gravity="center"
+            android:visibility="gone" />
+
     </LinearLayout>
 
     <!-- ── Cámara (hidden por defecto) ───────────────────────────────── -->

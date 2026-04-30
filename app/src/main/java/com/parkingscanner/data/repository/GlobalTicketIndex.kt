@@ -27,6 +27,21 @@ class GlobalTicketIndex(context: Context) {
         syncBoleta(boleta, arr)
     }
 
+    fun renameScanner(oldName: String, newName: String) {
+        val index = load()
+        val keys = index.keys().asSequence().toList()
+        for (boleta in keys) {
+            val arr = index.optJSONArray(boleta) ?: continue
+            val list = (0 until arr.length()).map { arr.getString(it) }
+            if (oldName in list) {
+                val updated = JSONArray().also { a -> list.map { if (it == oldName) newName else it }.forEach { a.put(it) } }
+                index.put(boleta, updated)
+                syncBoleta(boleta, updated)
+            }
+        }
+        file.writeText(index.toString())
+    }
+
     fun removeTicket(boleta: String, scannerName: String) {
         if (boleta.isBlank()) return
         val index = load()

@@ -41,6 +41,17 @@
     </LinearLayout>
 
     <ImageButton
+        android:id="@+id/btnEditScanner"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@android:drawable/ic_menu_edit"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:tint="#90A4AE"
+        android:contentDescription="Editar"
+        android:focusable="false"
+        android:layout_marginStart="4dp" />
+
+    <ImageButton
         android:id="@+id/btnDeleteScanner"
         android:layout_width="40dp"
         android:layout_height="40dp"
@@ -49,6 +60,6 @@
         android:tint="#EF9A9A"
         android:contentDescription="Eliminar"
         android:focusable="false"
-        android:layout_marginStart="8dp" />
+        android:layout_marginStart="4dp" />
 
 </LinearLayout>
