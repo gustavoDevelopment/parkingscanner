@@ -16,9 +16,11 @@ class ScannerViewModelFactory(
     private val deleteAllScannersUseCase: DeleteAllScannersUseCase,
     private val closeScannerUseCase: CloseScannerUseCase,
     private val deleteScannerUseCase: DeleteScannerUseCase,
-    private val exportToCsvUseCase: ExportToCsvUseCase
+    private val exportToCsvUseCase: ExportToCsvUseCase,
+    private val renameScannerUseCase: RenameScannerUseCase,
+    private val updateDescriptionUseCase: UpdateDescriptionUseCase
 ) : ViewModelProvider.Factory {
-    
+
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ScannerViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
@@ -34,7 +36,9 @@ class ScannerViewModelFactory(
                 deleteAllScannersUseCase,
                 closeScannerUseCase,
                 deleteScannerUseCase,
-                exportToCsvUseCase
+                exportToCsvUseCase,
+                renameScannerUseCase,
+                updateDescriptionUseCase
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")

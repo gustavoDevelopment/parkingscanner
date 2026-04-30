@@ -1,93 +1,119 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:padding="12dp"
-    android:background="#FFFFFF"
-    android:layout_marginBottom="2dp">
+    android:layout_marginStart="12dp"
+    android:layout_marginEnd="12dp"
+    android:layout_marginBottom="16dp"
+    app:cardCornerRadius="10dp"
+    app:cardElevation="3dp"
+    app:cardBackgroundColor="#FFFFFF">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:gravity="center_vertical">
 
+        <!-- Main content -->
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/ticketBoleta"
-                android:layout_width="0dp"
+            <!-- Boleta + Total -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#000000" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
 
+                <TextView
+                    android:id="@+id/ticketBoleta"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/md_on_surface" />
+
+                <TextView
+                    android:id="@+id/ticketTotal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/amount_positive" />
+
+            </LinearLayout>
+
+            <!-- Placa | Tipo vehículo -->
             <TextView
-                android:id="@+id/ticketTotal"
+                android:id="@+id/ticketPlacaVehiculo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textColor="@color/md_on_surface_variant"
+                android:layout_marginTop="3dp" />
+
+            <!-- Chip medio de pago -->
+            <TextView
+                android:id="@+id/ticketMedioPago"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="16sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
-                android:textColor="#2E7D32" />
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="2dp"
+                android:layout_marginTop="5dp"
+                android:background="@drawable/chip_bg_efectivo"
+                android:textColor="@color/chip_efectivo_text" />
+
+            <!-- No suma label (hidden by default) -->
+            <TextView
+                android:id="@+id/ticketNoSumaLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No suma al efectivo"
+                android:textSize="10sp"
+                android:textColor="@color/md_on_surface_variant"
+                android:layout_marginTop="2dp"
+                android:visibility="gone" />
+
+            <!-- Vigilantes -->
+            <TextView
+                android:id="@+id/ticketVigilanteIngreso"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/md_on_surface_variant"
+                android:layout_marginTop="2dp" />
+
+            <TextView
+                android:id="@+id/ticketVigilanteSalida"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/md_on_surface_variant" />
 
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/ticketPlacaVehiculo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="13sp"
-            android:textColor="#444444"
-            android:layout_marginTop="2dp" />
-
-        <TextView
-            android:id="@+id/ticketMedioPago"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="11sp"
-            android:textColor="#2196F3"
-            android:layout_marginTop="2dp" />
-
-        <TextView
-            android:id="@+id/ticketNoSumaLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="No suma al efectivo"
-            android:textSize="10sp"
-            android:textColor="#9E9E9E"
-            android:fontFamily="sans-serif-light"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/ticketVigilanteIngreso"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:textColor="#666666" />
-
-        <TextView
-            android:id="@+id/ticketVigilanteSalida"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:textColor="#666666" />
+        <ImageButton
+            android:id="@+id/deleteTicketButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_delete"
+            android:contentDescription="Eliminar ticket"
+            android:tint="#EFAAAA"
+            android:focusable="false" />
 
     </LinearLayout>
 
-    <ImageButton
-        android:id="@+id/deleteTicketButton"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_gravity="center_vertical"
-        android:layout_marginStart="8dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/ic_menu_delete"
-        android:contentDescription="Delete ticket"
-        android:tint="#FF0000" />
-
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -1,12 +1,20 @@
 package com.parkingscanner.data.repository
 
 import android.content.Context
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 class GlobalTicketIndex(context: Context) {
+
     private val file = File(File(context.filesDir, "ParkingScanner"), "global_index.json")
+    private val fsIndex get() = FirebaseFirestore.getInstance().collection("globalIndex")
+
+    // ── Local + Firestore write ───────────────────────────────────────────────
 
     fun addTicket(boleta: String, scannerName: String) {
         if (boleta.isBlank()) return
@@ -16,6 +24,22 @@ class GlobalTicketIndex(context: Context) {
         if (scannerName !in existing) arr.put(scannerName)
         index.put(boleta, arr)
         file.writeText(index.toString())
+        syncBoleta(boleta, arr)
+    }
+
+    fun renameScanner(oldName: String, newName: String) {
+        val index = load()
+        val keys = index.keys().asSequence().toList()
+        for (boleta in keys) {
+            val arr = index.optJSONArray(boleta) ?: continue
+            val list = (0 until arr.length()).map { arr.getString(it) }
+            if (oldName in list) {
+                val updated = JSONArray().also { a -> list.map { if (it == oldName) newName else it }.forEach { a.put(it) } }
+                index.put(boleta, updated)
+                syncBoleta(boleta, updated)
+            }
+        }
+        file.writeText(index.toString())
     }
 
     fun removeTicket(boleta: String, scannerName: String) {
@@ -23,17 +47,25 @@ class GlobalTicketIndex(context: Context) {
         val index = load()
         val arr = index.optJSONArray(boleta) ?: return
         val remaining = (0 until arr.length()).map { arr.getString(it) }.filter { it != scannerName }
-        if (remaining.isEmpty()) index.remove(boleta) else {
-            val newArr = JSONArray()
-            remaining.forEach { newArr.put(it) }
+        if (remaining.isEmpty()) {
+            index.remove(boleta)
+            deleteBoleta(boleta)
+        } else {
+            val newArr = JSONArray().also { a -> remaining.forEach { a.put(it) } }
             index.put(boleta, newArr)
+            syncBoleta(boleta, newArr)
         }
         file.writeText(index.toString())
     }
 
+    // ── Read ─────────────────────────────────────────────────────────────────
+
     fun load(): JSONObject {
-        return if (file.exists()) JSONObject(file.readText()) else JSONObject()
+        return if (file.exists()) try { JSONObject(file.readText()) } catch (_: Exception) { JSONObject() }
+        else JSONObject()
     }
+
+    // ── Rebuild from local JSON files + sync to Firestore ────────────────────
 
     fun rebuild() {
         val dir = file.parentFile ?: return
@@ -42,6 +74,7 @@ class GlobalTicketIndex(context: Context) {
             name.endsWith(".json") && name != "tickets.json" && name != "catalogos.json"
                 && name != "descriptions.json" && name != "global_index.json"
         } ?: return
+
         for (jsonFile in jsonFiles) {
             val scannerName = jsonFile.nameWithoutExtension
             try {
@@ -57,7 +90,10 @@ class GlobalTicketIndex(context: Context) {
             } catch (_: Exception) {}
         }
         file.writeText(index.toString())
+        syncAllToFirestore(index)
     }
+
+    // ── Stats ─────────────────────────────────────────────────────────────────
 
     data class GlobalStats(
         val totalTickets: Int,
@@ -70,25 +106,50 @@ class GlobalTicketIndex(context: Context) {
         val keys = index.keys()
         val allBoletas = mutableListOf<Int>()
         val compensated = mutableMapOf<String, List<String>>()
-
         while (keys.hasNext()) {
             val key = keys.next()
-            val num = key.toIntOrNull()
-            if (num != null) allBoletas.add(num)
+            key.toIntOrNull()?.let { allBoletas.add(it) }
             val arr = index.getJSONArray(key)
-            if (arr.length() > 1) {
-                compensated[key] = (0 until arr.length()).map { arr.getString(it) }
-            }
+            if (arr.length() > 1) compensated[key] = (0 until arr.length()).map { arr.getString(it) }
         }
-
         val sorted = allBoletas.sorted()
         val missing = if (sorted.size >= 2) {
-            val min = sorted.first()
-            val max = sorted.last()
             val set = sorted.toHashSet()
-            (min..max).filter { it !in set }
+            (sorted.first()..sorted.last()).filter { it !in set }
         } else emptyList()
-
         return GlobalStats(allBoletas.size, missing, compensated)
+    }
+
+    // ── Firestore helpers ─────────────────────────────────────────────────────
+
+    private fun syncBoleta(boleta: String, scanners: JSONArray) {
+        try {
+            val list = (0 until scanners.length()).map { scanners.getString(it) }
+            Tasks.await(fsIndex.document(boleta).set(
+                mapOf("scanners" to list, "lastUpdated" to Timestamp.now()), SetOptions.merge()
+            ))
+        } catch (_: Exception) {}
+    }
+
+    private fun deleteBoleta(boleta: String) {
+        try { Tasks.await(fsIndex.document(boleta).delete()) } catch (_: Exception) {}
+    }
+
+    private fun syncAllToFirestore(index: JSONObject) {
+        try {
+            val db = FirebaseFirestore.getInstance()
+            var batch = db.batch()
+            var count = 0
+            val keys = index.keys()
+            while (keys.hasNext()) {
+                val boleta = keys.next()
+                val arr = index.optJSONArray(boleta) ?: continue
+                val list = (0 until arr.length()).map { arr.getString(it) }
+                batch.set(fsIndex.document(boleta),
+                    mapOf("scanners" to list, "lastUpdated" to Timestamp.now()), SetOptions.merge())
+                if (++count == 500) { Tasks.await(batch.commit()); batch = db.batch(); count = 0 }
+            }
+            if (count > 0) Tasks.await(batch.commit())
+        } catch (_: Exception) {}
     }
 }

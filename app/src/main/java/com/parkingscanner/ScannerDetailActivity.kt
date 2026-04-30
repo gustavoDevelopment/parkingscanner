@@ -40,8 +40,11 @@ import com.parkingscanner.domain.usecase.*
 import com.parkingscanner.presentation.viewmodel.ScannerViewModel
 import com.parkingscanner.presentation.viewmodel.ScannerViewModelFactory
 import com.parkingscanner.data.repository.GlobalTicketIndex
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 
 class ScannerDetailActivity : AppCompatActivity() {
 
@@ -70,9 +73,11 @@ class ScannerDetailActivity : AppCompatActivity() {
     private lateinit var legendQr: TextView
     private lateinit var legendAnulado: TextView
     private lateinit var statsFaltantes: TextView
+    private lateinit var btnCorregirTotales: TextView
 
     private lateinit var cameraStatusText: TextView
     private lateinit var ticketsTitleView: TextView
+    private lateinit var ticketSearchView: android.widget.SearchView
 
     private var currentTickets: List<Ticket> = emptyList()
     private var currentImageBitmap: Bitmap? = null
@@ -135,7 +140,9 @@ class ScannerDetailActivity : AppCompatActivity() {
             deleteAllScannersUseCase,
             closeScannerUseCase,
             deleteScannerUseCase,
-            exportToCsvUseCase
+            exportToCsvUseCase,
+            RenameScannerUseCase(repository),
+            UpdateDescriptionUseCase(repository)
         )
         viewModel = ViewModelProvider(this, factory)[ScannerViewModel::class.java]
 
@@ -161,6 +168,8 @@ class ScannerDetailActivity : AppCompatActivity() {
         legendQr = findViewById(R.id.legendQr)
         legendAnulado = findViewById(R.id.legendAnulado)
         statsFaltantes = findViewById(R.id.statsFaltantes)
+        btnCorregirTotales = findViewById(R.id.btnCorregirTotales)
+        ticketSearchView = findViewById(R.id.ticketSearchView)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -242,17 +251,28 @@ class ScannerDetailActivity : AppCompatActivity() {
 
     private fun updateTicketsList(tickets: List<Ticket>) {
         currentTickets = tickets.sortedWith(compareBy { it.boleta.trim().toIntOrNull() ?: Int.MAX_VALUE })
-        val adapter = TicketAdapter(
-            context = this,
-            tickets = currentTickets,
-            onDeleteClick = { ticketId ->
-                showDeleteTicketDialog(ticketId)
-            },
-            onItemClick = { ticket ->
-                showTicketDetailDialog(ticket)
+
+        fun applyFilter(query: String) {
+            val filtered = if (query.isBlank()) currentTickets
+                else currentTickets.filter { it.boleta.contains(query.trim(), ignoreCase = true) }
+            ticketsListView.adapter = TicketAdapter(
+                context = this,
+                tickets = filtered,
+                onDeleteClick = { ticketId -> showDeleteTicketDialog(ticketId) },
+                onItemClick = { ticket -> showTicketDetailDialog(ticket) }
+            )
+        }
+
+        applyFilter(ticketSearchView.query?.toString() ?: "")
+
+        ticketSearchView.setOnQueryTextListener(object : android.widget.SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?) = false
+            override fun onQueryTextChange(newText: String?): Boolean {
+                applyFilter(newText ?: "")
+                return true
             }
-        )
-        ticketsListView.adapter = adapter
+        })
+
         updateStats(currentTickets)
     }
 
@@ -261,20 +281,24 @@ class ScannerDetailActivity : AppCompatActivity() {
         var countQr = 0
         var countAnulado = 0
         var total = 0.0
+        var totalEfectivo = 0.0
+        var totalQr = 0.0
+        var totalAnulado = 0.0
 
         tickets.forEach { ticket ->
             val medioPago = CatalogoMediosPago.obtenerPorCodigo(ticket.medioPagoCodigo)
+            val amt = effectiveAmount(ticket.total, ticket.tiempo)
 
             // Check tipo name FIRST so QR is never misclassified by computa flag
             when {
-                medioPago == null -> countEfectivo++
-                medioPago.tipo.contains("qr", ignoreCase = true) -> countQr++
-                !medioPago.computa || medioPago.tipo.contains("anulado", ignoreCase = true) -> countAnulado++
-                else -> countEfectivo++
+                medioPago == null -> { countEfectivo++; totalEfectivo += amt }
+                medioPago.tipo.contains("qr", ignoreCase = true) -> { countQr++; totalQr += amt }
+                !medioPago.computa || medioPago.tipo.contains("anulado", ignoreCase = true) -> { countAnulado++; totalAnulado += amt }
+                else -> { countEfectivo++; totalEfectivo += amt }
             }
 
             if (medioPago == null || medioPago.computa) {
-                total += effectiveAmount(ticket.total, ticket.tiempo)
+                total += amt
             }
         }
 
@@ -283,9 +307,10 @@ class ScannerDetailActivity : AppCompatActivity() {
         }
         statsBoletasCount.text = "${tickets.size} boletas"
         statsTotal.text = "Total: $${copFormat.format(total)}"
-        legendEfectivo.text = "● Efectivo: $countEfectivo"
-        legendQr.text = "● QR: $countQr"
-        legendAnulado.text = "● Anulado: $countAnulado"
+        legendEfectivo.text = if (totalEfectivo > 0) "● Efectivo: $countEfectivo ($${copFormat.format(totalEfectivo)})" else "● Efectivo: $countEfectivo"
+        legendQr.text = if (totalQr > 0) "● QR: $countQr ($${copFormat.format(totalQr)})" else "● QR: $countQr"
+        legendAnulado.text = if (totalAnulado > 0) "● Anulado: $countAnulado ($${copFormat.format(totalAnulado)})" else "● Anulado: $countAnulado"
+        legendAnulado.setTextColor(if (countAnulado > 0) android.graphics.Color.parseColor("#FF6D00") else android.graphics.Color.parseColor("#AAAAAA"))
         pieChart.setData(countEfectivo, countQr, countAnulado)
 
         // Show verify button only when there are enough tickets to check consecutives
@@ -296,6 +321,41 @@ class ScannerDetailActivity : AppCompatActivity() {
         } else {
             statsFaltantes.visibility = View.GONE
         }
+
+        // Show fix-totals button if any ticket has total > tiempo-based amount
+        val corregibles = tickets.count { t ->
+            val tiempoAmt = parseTiempoToAmount(t.tiempo)
+            val totalAmt = parseColombianAmount(t.total)
+            tiempoAmt > 0 && totalAmt > tiempoAmt
+        }
+        if (corregibles > 0) {
+            btnCorregirTotales.text = "⚡ Corregir $corregibles total(es) por tiempo"
+            btnCorregirTotales.visibility = View.VISIBLE
+            btnCorregirTotales.setOnClickListener { corregirTotalesPorTiempo() }
+        } else {
+            btnCorregirTotales.visibility = View.GONE
+        }
+    }
+
+    private fun corregirTotalesPorTiempo() {
+        val toFix = currentTickets.filter { t ->
+            val tiempoAmt = parseTiempoToAmount(t.tiempo)
+            val totalAmt = parseColombianAmount(t.total)
+            tiempoAmt > 0 && totalAmt > tiempoAmt
+        }
+        if (toFix.isEmpty()) return
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Corregir totales")
+            .setMessage("Se corregirán ${toFix.size} ticket(s) cuyo total supera el valor por tiempo.\n\n¿Continuar?")
+            .setPositiveButton("Corregir") { _, _ ->
+                val corrected = toFix.map { ticket ->
+                    ticket.copy(total = parseTiempoToAmount(ticket.tiempo).toLong().toString())
+                }
+                viewModel.updateTicketsBulk(corrected)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private data class BoletaAnalysis(
@@ -323,6 +383,13 @@ class ScannerDetailActivity : AppCompatActivity() {
                 clusterStart = todas[i]
                 break
             }
+        }
+
+        // Si la boleta inmediatamente anterior al clusterStart está cerca (gap ≤ 10),
+        // extender el análisis hacia atrás — podría haber faltantes entre ambas.
+        val idxCluster = todas.indexOf(clusterStart)
+        if (idxCluster > 0 && clusterStart - todas[idxCluster - 1] <= 10) {
+            clusterStart = todas[idxCluster - 1]
         }
 
         val end = todas.last()
@@ -382,48 +449,44 @@ class ScannerDetailActivity : AppCompatActivity() {
     }
     
     private fun showTicketDetailDialog(ticket: Ticket) {
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("Detalle del Ticket")
-        
-        val detailText = StringBuilder()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
 
-        if (ticket.boleta.isNotEmpty()) {
-            detailText.append("Boleta: ${ticket.boleta}\n")
+        // Image (local file first, then URL fallback)
+        val localFile = ticket.imagePath.takeIf { it.isNotEmpty() }?.let { File(it) }
+        if (localFile?.exists() == true) {
+            val imageView = ImageView(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 600
+                ).also { it.bottomMargin = 24 }
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setImageBitmap(android.graphics.BitmapFactory.decodeFile(localFile.absolutePath))
+            }
+            layout.addView(imageView)
         }
-        if (ticket.inmueble.isNotEmpty()) {
-            detailText.append("Inmueble: ${ticket.inmueble}\n")
-        }
-        if (ticket.vigilanteIngreso.isNotEmpty()) {
-            detailText.append("Vigilante Ingreso: ${ticket.vigilanteIngreso}\n")
-        }
-        if (ticket.vigilanteSalida.isNotEmpty()) {
-            detailText.append("Vigilante Salida: ${ticket.vigilanteSalida}\n")
-        }
-        if (ticket.placa.isNotEmpty()) {
-            detailText.append("Placa: ${ticket.placa}\n")
-        }
-        if (ticket.tipoVehiculo.isNotEmpty()) {
-            detailText.append("Tipo Vehículo: ${ticket.tipoVehiculo}\n")
-        }
-        if (ticket.fechaEntrada.isNotEmpty()) {
-            detailText.append("Fecha Entrada: ${ticket.fechaEntrada}\n")
-        }
-        if (ticket.fechaSalida.isNotEmpty()) {
-            detailText.append("Fecha Salida: ${ticket.fechaSalida}\n")
-        }
-        if (ticket.tiempo.isNotEmpty()) {
-            detailText.append("Tiempo: ${ticket.tiempo}\n")
-        }
-        if (ticket.total.isNotEmpty()) {
-            detailText.append("Total a Pagar: ${ticket.total}\n")
-        }
-        
-        builder.setMessage(detailText.toString())
-        builder.setPositiveButton("Cerrar", null)
-        builder.setNeutralButton("Editar") { _, _ ->
-            showEditTicketDialog(ticket)
-        }
-        builder.show()
+
+        val detailText = StringBuilder()
+        if (ticket.boleta.isNotEmpty()) detailText.append("Boleta: ${ticket.boleta}\n")
+        if (ticket.inmueble.isNotEmpty()) detailText.append("Inmueble: ${ticket.inmueble}\n")
+        if (ticket.vigilanteIngreso.isNotEmpty()) detailText.append("Vigilante Ingreso: ${ticket.vigilanteIngreso}\n")
+        if (ticket.vigilanteSalida.isNotEmpty()) detailText.append("Vigilante Salida: ${ticket.vigilanteSalida}\n")
+        if (ticket.placa.isNotEmpty()) detailText.append("Placa: ${ticket.placa}\n")
+        if (ticket.tipoVehiculo.isNotEmpty()) detailText.append("Tipo Vehículo: ${ticket.tipoVehiculo}\n")
+        if (ticket.fechaEntrada.isNotEmpty()) detailText.append("Fecha Entrada: ${ticket.fechaEntrada}\n")
+        if (ticket.fechaSalida.isNotEmpty()) detailText.append("Fecha Salida: ${ticket.fechaSalida}\n")
+        if (ticket.tiempo.isNotEmpty()) detailText.append("Tiempo: ${ticket.tiempo}\n")
+        if (ticket.total.isNotEmpty()) detailText.append("Total a Pagar: ${ticket.total}\n")
+
+        layout.addView(android.widget.TextView(this).apply { text = detailText.toString() })
+
+        AlertDialog.Builder(this)
+            .setTitle("Detalle del Ticket")
+            .setView(layout)
+            .setPositiveButton("Cerrar", null)
+            .setNeutralButton("Editar") { _, _ -> showEditTicketDialog(ticket) }
+            .show()
     }
     
     private fun showEditTicketDialog(ticket: Ticket) {
@@ -623,10 +686,19 @@ class ScannerDetailActivity : AppCompatActivity() {
             if (tiempo.isNotEmpty()) {
                 displayText.append("Tiempo: $tiempo\n")
             }
-            
+
             val total = jsonObject.optString("total", "")
             if (total.isNotEmpty()) {
                 displayText.append("Total a Pagar: $total\n")
+            }
+
+            // Cross-validate tiempo vs total
+            val tiempoAmt = parseTiempoToAmount(tiempo)
+            val totalAmt = parseColombianAmount(total)
+            if (tiempoAmt > 0 && totalAmt > 0 && tiempoAmt != totalAmt) {
+                val copFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale("es", "CO")).apply { maximumFractionDigits = 0 }
+                displayText.append("\n⚠️ INCONSISTENCIA: tiempo sugiere \$${copFmt.format(tiempoAmt)} pero total dice \$${copFmt.format(totalAmt)}\n")
+                displayText.append("   Verifica el campo incorrecto antes de guardar.\n")
             }
             
             // Mostrar todos los campos adicionales que existan en el JSON
@@ -975,12 +1047,26 @@ class ScannerDetailActivity : AppCompatActivity() {
             return
         }
         
-        // Generar ID único basado en timestamp
-        val uniqueId = "ticket_${System.currentTimeMillis()}"
-        
-        val rawTotal = jsonObject.optString("total", "")
-            .ifEmpty { jsonObject.optString("totalAPagar", "") }
-            .ifEmpty { jsonObject.optString("valorAPagar", "") }
+        val uniqueId = "ticket_${newBoleta.trim()}"
+
+        val rawTotal = run {
+            val ocr = jsonObject.optString("total", "")
+                .ifEmpty { jsonObject.optString("totalAPagar", "") }
+                .ifEmpty { jsonObject.optString("valorAPagar", "") }
+            val ocrAmount = parseColombianAmount(ocr)
+            if (ocrAmount > 0) {
+                // Total legible — úsalo directamente
+                ocr
+            } else {
+                // Total vacío/ilegible — calcula por tiempo
+                val tiempo = jsonObject.optString("tiempo", "")
+                val tiempoAmount = parseTiempoToAmount(tiempo)
+                if (tiempoAmount > 0) tiempoAmount.toLong().toString() else ocr
+            }
+        }
+
+        // Save image locally
+        val imagePath = currentImageBitmap?.let { saveImageLocally(uniqueId, it) } ?: ""
 
         val ticket = Ticket(
             id = uniqueId,
@@ -996,8 +1082,10 @@ class ScannerDetailActivity : AppCompatActivity() {
             total = rawTotal,
             extractedText = extractedText,
             data = dataMap,
-            medioPagoCodigo = selectedMedioPago?.codigo ?: 0
+            medioPagoCodigo = selectedMedioPago?.codigo ?: 0,
+            imagePath = imagePath
         )
+
         
         Log.d("ScannerDetailActivity", "Ticket created with:")
         Log.d("ScannerDetailActivity", "  - boleta: ${ticket.boleta}")
@@ -1050,13 +1138,26 @@ class ScannerDetailActivity : AppCompatActivity() {
         return rotatedBitmap
     }
 
-    private fun effectiveAmount(total: String, tiempo: String): Double {
-        val hours = Regex("\\d+").find(tiempo)?.value?.toDoubleOrNull() ?: 0.0
-        val fromTiempo = hours * 1000.0
-        val fromTotal = parseColombianAmount(total)
+    private fun parseTiempoToAmount(tiempo: String): Double {
+        if (tiempo.isBlank()) return 0.0
+        val lower = tiempo.lowercase()
+        val numbers = Regex("\\d+").findAll(tiempo).map { it.value.toDouble() }.toList()
+        if (numbers.isEmpty()) return 0.0
         return when {
-            fromTiempo > 0.0 -> fromTiempo
-            else -> fromTotal
+            lower.contains("minuto") && !lower.contains("hora") -> numbers[0] / 60.0 * 1000.0
+            lower.contains("hora") && lower.contains("minuto") && numbers.size >= 2 ->
+                (numbers[0] + numbers[1] / 60.0) * 1000.0
+            else -> numbers[0] * 1000.0
+        }
+    }
+
+    private fun effectiveAmount(total: String, tiempo: String): Double {
+        val fromTotal = parseColombianAmount(total)
+        val fromTiempo = parseTiempoToAmount(tiempo)
+        return when {
+            fromTotal > 0.0 -> fromTotal   // total impreso = fuente de verdad
+            fromTiempo > 0.0 -> fromTiempo // fallback si OCR no leyó el total
+            else -> 0.0
         }
     }
 
@@ -1074,4 +1175,14 @@ class ScannerDetailActivity : AppCompatActivity() {
         super.onDestroy()
         cameraService.releaseCamera()
     }
+
+    private fun saveImageLocally(ticketId: String, bitmap: Bitmap): String {
+        return try {
+            val imagesDir = File(filesDir, "ParkingScanner/images").also { it.mkdirs() }
+            val file = File(imagesDir, "$ticketId.jpg")
+            FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+            file.absolutePath
+        } catch (_: Exception) { "" }
+    }
+
 }

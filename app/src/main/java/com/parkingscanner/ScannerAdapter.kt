@@ -15,7 +15,8 @@ class ScannerAdapter(
     private val context: Context,
     private val summaries: List<ScannerSummary>,
     private val onItemClick: (String) -> Unit,
-    private val onDeleteClick: (String) -> Unit
+    private val onDeleteClick: (String) -> Unit,
+    private val onEditClick: (String) -> Unit = {}
 ) : BaseAdapter() {
 
     private val currencyFormat = NumberFormat.getNumberInstance(Locale("es", "CO")).apply {
@@ -43,6 +44,9 @@ class ScannerAdapter(
             descView.visibility = View.GONE
         }
 
+        view.findViewById<ImageButton>(R.id.btnEditScanner).setOnClickListener {
+            onEditClick(summary.name)
+        }
         view.findViewById<ImageButton>(R.id.btnDeleteScanner).setOnClickListener {
             onDeleteClick(summary.name)
         }

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.ParkingScanner" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="colorPrimary">#7986CB</item>
-        <item name="colorPrimaryDark">#5C6BC0</item>
-        <item name="colorAccent">#F48FB1</item>
-        <item name="android:windowBackground">#F3F4F6</item>
-        <item name="android:colorBackground">#F3F4F6</item>
+    <style name="Theme.ParkingScanner" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/md_primary</item>
+        <item name="colorPrimaryDark">@color/md_primary_dark</item>
+        <item name="colorAccent">@color/md_secondary</item>
+        <item name="android:windowBackground">@color/md_surface</item>
+        <item name="android:colorBackground">@color/md_surface</item>
+        <item name="android:statusBarColor">@color/md_primary_dark</item>
     </style>
 </resources>

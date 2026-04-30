@@ -30,7 +30,9 @@ class ScannerViewModel(
     private val deleteAllScannersUseCase: DeleteAllScannersUseCase,
     private val closeScannerUseCase: CloseScannerUseCase,
     private val deleteScannerUseCase: DeleteScannerUseCase,
-    private val exportToCsvUseCase: ExportToCsvUseCase
+    private val exportToCsvUseCase: ExportToCsvUseCase,
+    private val renameScannerUseCase: RenameScannerUseCase,
+    private val updateDescriptionUseCase: UpdateDescriptionUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableLiveData(ScannerUiState())
@@ -195,6 +197,39 @@ class ScannerViewModel(
                         error = error.message
                     )
                 }
+        }
+    }
+
+    fun updateTicketsBulk(tickets: List<Ticket>) {
+        viewModelScope.launch {
+            val scannerName = _uiState.value?.currentScanner?.name ?: return@launch
+            _uiState.value = _uiState.value?.copy(isLoading = true)
+            for (ticket in tickets) {
+                updateTicketUseCase(scannerName, ticket)
+            }
+            loadScanner(scannerName)
+            _uiState.value = _uiState.value?.copy(isLoading = false)
+        }
+    }
+
+    fun renameScanner(oldName: String, newName: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value?.copy(isLoading = true)
+            renameScannerUseCase(oldName, newName)
+                .onSuccess {
+                    loadScannerList()
+                    _uiState.value = _uiState.value?.copy(isLoading = false)
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value?.copy(isLoading = false, error = error.message)
+                }
+        }
+    }
+
+    fun updateScannerDescription(name: String, description: String) {
+        viewModelScope.launch {
+            updateDescriptionUseCase(name, description)
+            loadScannerList()
         }
     }
 

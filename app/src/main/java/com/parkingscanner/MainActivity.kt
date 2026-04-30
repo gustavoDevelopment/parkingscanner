@@ -2,9 +2,10 @@ package com.parkingscanner
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.ArrayAdapter
 import android.widget.EditText
-import android.widget.ListView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -12,9 +13,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
-import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.firebase.auth.FirebaseAuth
 import com.parkingscanner.data.repository.ScannerRepositoryImpl
-import com.parkingscanner.GlobalIndexActivity
 import com.parkingscanner.domain.model.ScannerSummary
 import com.parkingscanner.domain.usecase.*
 import com.parkingscanner.presentation.viewmodel.ScannerViewModel
@@ -23,11 +23,11 @@ import java.util.Calendar
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var scannerListView: android.widget.ListView
+    private lateinit var fabNewScanner: com.google.android.material.floatingactionbutton.FloatingActionButton
+    private lateinit var fabCatalog: com.google.android.material.floatingactionbutton.FloatingActionButton
+    private lateinit var fabGlobalIndex: com.google.android.material.floatingactionbutton.FloatingActionButton
     private lateinit var viewModel: ScannerViewModel
-    private lateinit var scannerListView: ListView
-    private lateinit var fabNewScanner: FloatingActionButton
-    private lateinit var fabCatalog: FloatingActionButton
-    private lateinit var fabGlobalIndex: FloatingActionButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,7 +46,9 @@ class MainActivity : AppCompatActivity() {
             DeleteAllScannersUseCase(repository),
             CloseScannerUseCase(repository),
             DeleteScannerUseCase(repository),
-            ExportToCsvUseCase(repository)
+            ExportToCsvUseCase(repository),
+            RenameScannerUseCase(repository),
+            UpdateDescriptionUseCase(repository)
         )
         viewModel = ViewModelProvider(this, factory)[ScannerViewModel::class.java]
 
@@ -55,8 +57,21 @@ class MainActivity : AppCompatActivity() {
         fabCatalog = findViewById(R.id.fabCatalog)
         fabGlobalIndex = findViewById(R.id.fabGlobalIndex)
 
-        setupObservers()
-        setupListeners()
+        fabNewScanner.setOnClickListener { showScannerFormDialog(null) }
+        fabCatalog.setOnClickListener {
+            startActivity(Intent(this, CatalogManagementActivity::class.java))
+        }
+        fabGlobalIndex.setOnClickListener {
+            startActivity(Intent(this, GlobalIndexActivity::class.java))
+        }
+
+        viewModel.uiState.observe(this, Observer { state ->
+            if (state.scannerSummaries.isNotEmpty()) {
+                updateScannerList(state.scannerSummaries)
+            }
+        })
+
+        viewModel.loadScannerList()
     }
 
     override fun onResume() {
@@ -64,27 +79,18 @@ class MainActivity : AppCompatActivity() {
         viewModel.loadScannerList()
     }
 
-    private fun setupObservers() {
-        viewModel.uiState.observe(this, Observer { state ->
-            val summaries = state.scannerSummaries.ifEmpty {
-                state.scannerNames.map { ScannerSummary(it, 0, 0.0) }
-            }
-            updateScannerList(summaries)
-            state.error?.let { error ->
-                Toast.makeText(this, "Error: $error", Toast.LENGTH_SHORT).show()
-                viewModel.clearError()
-            }
-        })
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menu?.add(0, 1, 0, "Cerrar sesión")
+        return true
     }
 
-    private fun setupListeners() {
-        fabNewScanner.setOnClickListener { showNewScannerDialog() }
-        fabCatalog.setOnClickListener {
-            startActivity(Intent(this, CatalogManagementActivity::class.java))
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 1) {
+            FirebaseAuth.getInstance().signOut()
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
         }
-        fabGlobalIndex.setOnClickListener {
-            startActivity(Intent(this, GlobalIndexActivity::class.java))
-        }
+        return super.onOptionsItemSelected(item)
     }
 
     private fun updateScannerList(summaries: List<ScannerSummary>) {
@@ -98,6 +104,9 @@ class MainActivity : AppCompatActivity() {
             },
             onDeleteClick = { name ->
                 showDeleteScannerDialog(name)
+            },
+            onEditClick = { name ->
+                showScannerFormDialog(name)
             }
         )
     }
@@ -124,7 +133,8 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showNewScannerDialog() {
+    // Shared form for create (editingName=null) and rename (editingName=existing name)
+    private fun showScannerFormDialog(editingName: String?) {
         val currentYear = Calendar.getInstance().get(Calendar.YEAR)
         val years = ((currentYear - 2)..(currentYear + 1)).map { it.toString() }
         val days = (1..31).map { it.toString().padStart(2, '0') }
@@ -135,6 +145,11 @@ class MainActivity : AppCompatActivity() {
         )
         val monthCodes = (1..12).map { it.toString().padStart(2, '0') }
 
+        // Parse existing name to pre-populate spinners: YYYY(DD-MM A DD-MM)
+        val parsed = editingName?.let {
+            Regex("""^(\d{4})\((\d{2})-(\d{2}) A (\d{2})-(\d{2})\)$""").matchEntire(it)?.groupValues
+        }
+
         val layout = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(48, 16, 48, 16)
@@ -142,74 +157,91 @@ class MainActivity : AppCompatActivity() {
 
         fun makeSpinner(items: List<String>, selectedIndex: Int = 0) = Spinner(this).apply {
             adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, items)
-            setSelection(selectedIndex)
+            setSelection(selectedIndex.coerceIn(0, items.size - 1))
         }
+
+        val cal = Calendar.getInstance()
+
+        val existingDesc = editingName?.let { name ->
+            viewModel.uiState.value?.scannerSummaries?.find { it.name == name }?.description ?: ""
+        } ?: ""
 
         val descLabel = TextView(this).apply { text = "Descripción" }
         val descInput = EditText(this).apply {
             hint = "Descripcion del recorrido"
             inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setText(existingDesc)
         }
 
         val yearLabel = TextView(this).apply { text = "Año" }
-        val yearSpinner = makeSpinner(years, years.indexOf(currentYear.toString()).coerceAtLeast(0))
+        val yearSpinner = makeSpinner(years,
+            if (parsed != null) years.indexOf(parsed[1]).coerceAtLeast(0)
+            else years.indexOf(currentYear.toString()).coerceAtLeast(0))
 
         val startLabel = TextView(this).apply { text = "Fecha inicio" }
-        val startRow = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-        }
-        val cal = Calendar.getInstance()
-        val startDaySpinner = makeSpinner(days, cal.get(Calendar.DAY_OF_MONTH) - 1)
-        val startMonthSpinner = makeSpinner(months, cal.get(Calendar.MONTH))
+        val startRow = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
+        val startDaySpinner = makeSpinner(days,
+            if (parsed != null) days.indexOf(parsed[2]) else cal.get(Calendar.DAY_OF_MONTH) - 1)
+        val startMonthSpinner = makeSpinner(months,
+            if (parsed != null) monthCodes.indexOf(parsed[3]) else cal.get(Calendar.MONTH))
         startDaySpinner.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         startMonthSpinner.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 2f)
         startRow.addView(startDaySpinner)
         startRow.addView(startMonthSpinner)
 
         val endLabel = TextView(this).apply { text = "Fecha fin" }
-        val endRow = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-        }
-        val endDaySpinner = makeSpinner(days, cal.get(Calendar.DAY_OF_MONTH) - 1)
-        val endMonthSpinner = makeSpinner(months, cal.get(Calendar.MONTH))
+        val endRow = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
+        val endDaySpinner = makeSpinner(days,
+            if (parsed != null) days.indexOf(parsed[4]) else cal.get(Calendar.DAY_OF_MONTH) - 1)
+        val endMonthSpinner = makeSpinner(months,
+            if (parsed != null) monthCodes.indexOf(parsed[5]) else cal.get(Calendar.MONTH))
         endDaySpinner.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         endMonthSpinner.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 2f)
         endRow.addView(endDaySpinner)
         endRow.addView(endMonthSpinner)
 
-        layout.addView(descLabel)
-        layout.addView(descInput)
-        layout.addView(yearLabel)
-        layout.addView(yearSpinner)
-        layout.addView(startLabel)
-        layout.addView(startRow)
-        layout.addView(endLabel)
-        layout.addView(endRow)
+        layout.addView(descLabel); layout.addView(descInput)
+        layout.addView(yearLabel); layout.addView(yearSpinner)
+        layout.addView(startLabel); layout.addView(startRow)
+        layout.addView(endLabel); layout.addView(endRow)
+
+        val title = if (editingName == null) "Nueva Fecha de Recogida" else "Editar Fecha de Recogida"
+        val btnLabel = if (editingName == null) "Crear" else "Guardar"
 
         AlertDialog.Builder(this)
-            .setTitle("Nueva Fecha de Recogida")
+            .setTitle(title)
             .setView(layout)
-            .setPositiveButton("Crear") { _, _ ->
+            .setPositiveButton(btnLabel) { _, _ ->
                 val desc = descInput.text.toString().trim()
                 val year = yearSpinner.selectedItem.toString()
                 val startDay = days[startDaySpinner.selectedItemPosition]
                 val startMonth = monthCodes[startMonthSpinner.selectedItemPosition]
                 val endDay = days[endDaySpinner.selectedItemPosition]
                 val endMonth = monthCodes[endMonthSpinner.selectedItemPosition]
-                val start = "$startDay-$startMonth"
-                val end = "$endDay-$endMonth"
-                if (desc.isEmpty()) {
-                    Toast.makeText(this, "La descripción es requerida", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                val name = "$year($start A $end)"
-                val existing = viewModel.uiState.value?.let { state ->
-                    state.scannerSummaries.map { it.name }.ifEmpty { state.scannerNames }
-                } ?: emptyList()
-                if (existing.contains(name)) {
-                    Toast.makeText(this, "Esta fecha de recogida ya existe", Toast.LENGTH_SHORT).show()
+                val newName = "$year($startDay-$startMonth A $endDay-$endMonth)"
+
+                if (editingName == null) {
+                    if (desc.isEmpty()) {
+                        Toast.makeText(this, "La descripción es requerida", Toast.LENGTH_SHORT).show()
+                        return@setPositiveButton
+                    }
+                    val existing = viewModel.uiState.value?.let { state ->
+                        state.scannerSummaries.map { it.name }.ifEmpty { state.scannerNames }
+                    } ?: emptyList()
+                    if (existing.contains(newName)) {
+                        Toast.makeText(this, "Esta fecha de recogida ya existe", Toast.LENGTH_SHORT).show()
+                    } else {
+                        viewModel.createScanner(newName, desc)
+                    }
                 } else {
-                    viewModel.createScanner(name, desc)
+                    if (newName != editingName) {
+                        viewModel.renameScanner(editingName, newName)
+                        if (desc.isNotEmpty()) viewModel.updateScannerDescription(newName, desc)
+                    } else if (desc != existingDesc) {
+                        viewModel.updateScannerDescription(editingName, desc)
+                    } else {
+                        Toast.makeText(this, "Sin cambios", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             .setNegativeButton("Cancelar", null)
