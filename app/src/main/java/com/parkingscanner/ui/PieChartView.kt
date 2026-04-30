@@ -7,6 +7,8 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
+import kotlin.math.cos
+import kotlin.math.sin
 
 class PieChartView @JvmOverloads constructor(
     context: Context,
@@ -14,6 +16,11 @@ class PieChartView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
     private val oval = RectF()
 
     private var countEfectivo = 0
@@ -41,6 +48,8 @@ class PieChartView @JvmOverloads constructor(
             return
         }
 
+        textPaint.textSize = r * 0.28f
+
         var startAngle = -90f
 
         fun drawSlice(count: Int, colorHex: String) {
@@ -48,6 +57,17 @@ class PieChartView @JvmOverloads constructor(
             val sweep = 360f * count / total
             paint.color = Color.parseColor(colorHex)
             canvas.drawArc(oval, startAngle, sweep, true, paint)
+
+            // Draw percentage label if slice is large enough
+            val pct = (count / total * 100).toInt()
+            if (pct >= 8) {
+                val midAngle = Math.toRadians((startAngle + sweep / 2).toDouble())
+                val labelR = r * 0.62f
+                val tx = cx + labelR * cos(midAngle).toFloat()
+                val ty = cy + labelR * sin(midAngle).toFloat() + textPaint.textSize * 0.35f
+                canvas.drawText("$pct%", tx, ty, textPaint)
+            }
+
             startAngle += sweep
         }
 

@@ -44,13 +44,19 @@ class ScannerRepositoryImpl(private val context: Context) : ScannerRepository {
         scannersRef()?.document(scannerName)?.collection("tickets")
 
     private fun fsAddTicket(scannerName: String, ticketJson: JSONObject) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        android.util.Log.d("FS_SYNC", "fsAddTicket uid=$uid scanner=$scannerName")
+        if (uid == null) { android.util.Log.e("FS_SYNC", "fsAddTicket: no user logged in"); return }
         try {
             val id = ticketJson.optString("id")
-            if (id.isEmpty()) return
-            val data = jsonObjectToMap(ticketJson)
+            if (id.isEmpty()) { android.util.Log.e("FS_SYNC", "fsAddTicket: empty id"); return }
+            val data = jsonObjectToMap(ticketJson).toMutableMap()
+            val tsMillis = ticketJson.optString("timestamp").toLongOrNull()
+            if (tsMillis != null) data["timestamp"] = Timestamp(tsMillis / 1000, ((tsMillis % 1000) * 1_000_000).toInt())
             Tasks.await(ticketsRef(scannerName)?.document(id)?.set(data) ?: return)
+            android.util.Log.d("FS_SYNC", "fsAddTicket: OK id=$id")
             updateScannerMeta(scannerName)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { android.util.Log.e("FS_SYNC", "fsAddTicket error", e) }
     }
 
     private fun fsDeleteTicket(scannerName: String, ticketId: String) {
@@ -92,7 +98,10 @@ class ScannerRepositoryImpl(private val context: Context) : ScannerRepository {
                 val t = jsonArray.getJSONObject(i)
                 val id = t.optString("id")
                 if (id.isEmpty()) continue
-                batch.set(tRef.document(id), jsonObjectToMap(t))
+                val tData = jsonObjectToMap(t).toMutableMap()
+                val tsMs = t.optString("timestamp").toLongOrNull()
+                if (tsMs != null) tData["timestamp"] = Timestamp(tsMs / 1000, ((tsMs % 1000) * 1_000_000).toInt())
+                batch.set(tRef.document(id), tData)
                 if (++count == 500) { Tasks.await(batch.commit()); batch = db.batch(); count = 0 }
             }
             if (count > 0) Tasks.await(batch.commit())
@@ -157,8 +166,44 @@ class ScannerRepositoryImpl(private val context: Context) : ScannerRepository {
 
     private fun jsonObjectToMap(obj: JSONObject): Map<String, Any?> {
         val map = mutableMapOf<String, Any?>()
-        obj.keys().forEach { key -> map[key] = obj.opt(key) }
+        obj.keys().forEach { key -> map[key] = toFirestoreValue(obj.opt(key)) }
         return map
+    }
+
+    private fun toFirestoreValue(value: Any?): Any? = when {
+        value == null || value === org.json.JSONObject.NULL -> null
+        value is JSONObject -> jsonObjectToMap(value)
+        value is org.json.JSONArray -> (0 until value.length()).map { toFirestoreValue(value.opt(it)) }
+        else -> value
+    }
+
+    // ── ID migration: timestamp IDs → ticket_{boleta} ────────────────────────
+
+    fun migrateTicketIds() {
+        val files = parkingScannerDir.listFiles { _, n ->
+            n.endsWith(".json") && n != "tickets.json" && n != "catalogos.json"
+                && n != "descriptions.json" && n != "global_index.json"
+        } ?: return
+
+        for (file in files) {
+            try {
+                val arr = JSONArray(file.readText())
+                var changed = false
+                for (i in 0 until arr.length()) {
+                    val t = arr.getJSONObject(i)
+                    val oldId = t.optString("id", "")
+                    val boleta = t.optString("boleta", "").trim()
+                    if (boleta.isBlank()) continue
+                    val newId = "ticket_$boleta"
+                    if (oldId != newId) {
+                        t.put("id", newId)
+                        changed = true
+                    }
+                }
+                if (changed) file.writeText(arr.toString())
+            } catch (_: Exception) {}
+        }
+        android.util.Log.d("FS_SYNC", "migrateTicketIds done")
     }
 
     // ── Repository operations ────────────────────────────────────────────────
@@ -187,11 +232,12 @@ class ScannerRepositoryImpl(private val context: Context) : ScannerRepository {
             val file = File(parkingScannerDir, "$name.json")
             val jsonArray = if (file.exists()) {
                 val arr = JSONArray(file.readText())
-                // First open after Phase 2 upgrade: sync to Firestore if not there yet
+                // Sync if Firestore is behind local (first upgrade, or missed adds)
                 try {
                     val fsCount = Tasks.await(ticketsRef(name)?.get() ?: throw Exception())?.size() ?: 0
-                    if (fsCount == 0 && arr.length() > 0) fsFullSync(name, arr)
-                } catch (_: Exception) {}
+                    android.util.Log.d("FS_SYNC", "loadScanner $name: local=${arr.length()} fs=$fsCount")
+                    if (fsCount < arr.length()) fsFullSync(name, arr)
+                } catch (e: Exception) { android.util.Log.e("FS_SYNC", "loadScanner check error", e) }
                 arr
             } else {
                 val fromFs = fsLoadTickets(name)

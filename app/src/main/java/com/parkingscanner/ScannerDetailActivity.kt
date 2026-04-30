@@ -264,6 +264,8 @@ class ScannerDetailActivity : AppCompatActivity() {
         var countQr = 0
         var countAnulado = 0
         var total = 0.0
+        var totalQr = 0.0
+        var totalAnulado = 0.0
 
         tickets.forEach { ticket ->
             val medioPago = CatalogoMediosPago.obtenerPorCodigo(ticket.medioPagoCodigo)
@@ -271,8 +273,14 @@ class ScannerDetailActivity : AppCompatActivity() {
             // Check tipo name FIRST so QR is never misclassified by computa flag
             when {
                 medioPago == null -> countEfectivo++
-                medioPago.tipo.contains("qr", ignoreCase = true) -> countQr++
-                !medioPago.computa || medioPago.tipo.contains("anulado", ignoreCase = true) -> countAnulado++
+                medioPago.tipo.contains("qr", ignoreCase = true) -> {
+                    countQr++
+                    totalQr += effectiveAmount(ticket.total, ticket.tiempo)
+                }
+                !medioPago.computa || medioPago.tipo.contains("anulado", ignoreCase = true) -> {
+                    countAnulado++
+                    totalAnulado += effectiveAmount(ticket.total, ticket.tiempo)
+                }
                 else -> countEfectivo++
             }
 
@@ -287,8 +295,9 @@ class ScannerDetailActivity : AppCompatActivity() {
         statsBoletasCount.text = "${tickets.size} boletas"
         statsTotal.text = "Total: $${copFormat.format(total)}"
         legendEfectivo.text = "● Efectivo: $countEfectivo"
-        legendQr.text = "● QR: $countQr"
-        legendAnulado.text = "● Anulado: $countAnulado"
+        legendQr.text = if (totalQr > 0) "● QR: $countQr ($${copFormat.format(totalQr)})" else "● QR: $countQr"
+        legendAnulado.text = if (totalAnulado > 0) "● Anulado: $countAnulado ($${copFormat.format(totalAnulado)})" else "● Anulado: $countAnulado"
+        legendAnulado.setTextColor(if (countAnulado > 0) android.graphics.Color.parseColor("#FF6D00") else android.graphics.Color.parseColor("#AAAAAA"))
         pieChart.setData(countEfectivo, countQr, countAnulado)
 
         // Show verify button only when there are enough tickets to check consecutives
@@ -974,8 +983,7 @@ class ScannerDetailActivity : AppCompatActivity() {
             return
         }
         
-        // Generar ID único basado en timestamp
-        val uniqueId = "ticket_${System.currentTimeMillis()}"
+        val uniqueId = "ticket_${newBoleta.trim()}"
         
         val rawTotal = jsonObject.optString("total", "")
             .ifEmpty { jsonObject.optString("totalAPagar", "") }
