@@ -77,6 +77,7 @@ class ScannerDetailActivity : AppCompatActivity() {
 
     private lateinit var cameraStatusText: TextView
     private lateinit var ticketsTitleView: TextView
+    private lateinit var ticketSearchView: android.widget.SearchView
 
     private var currentTickets: List<Ticket> = emptyList()
     private var currentImageBitmap: Bitmap? = null
@@ -168,6 +169,7 @@ class ScannerDetailActivity : AppCompatActivity() {
         legendAnulado = findViewById(R.id.legendAnulado)
         statsFaltantes = findViewById(R.id.statsFaltantes)
         btnCorregirTotales = findViewById(R.id.btnCorregirTotales)
+        ticketSearchView = findViewById(R.id.ticketSearchView)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -249,17 +251,28 @@ class ScannerDetailActivity : AppCompatActivity() {
 
     private fun updateTicketsList(tickets: List<Ticket>) {
         currentTickets = tickets.sortedWith(compareBy { it.boleta.trim().toIntOrNull() ?: Int.MAX_VALUE })
-        val adapter = TicketAdapter(
-            context = this,
-            tickets = currentTickets,
-            onDeleteClick = { ticketId ->
-                showDeleteTicketDialog(ticketId)
-            },
-            onItemClick = { ticket ->
-                showTicketDetailDialog(ticket)
+
+        fun applyFilter(query: String) {
+            val filtered = if (query.isBlank()) currentTickets
+                else currentTickets.filter { it.boleta.contains(query.trim(), ignoreCase = true) }
+            ticketsListView.adapter = TicketAdapter(
+                context = this,
+                tickets = filtered,
+                onDeleteClick = { ticketId -> showDeleteTicketDialog(ticketId) },
+                onItemClick = { ticket -> showTicketDetailDialog(ticket) }
+            )
+        }
+
+        applyFilter(ticketSearchView.query?.toString() ?: "")
+
+        ticketSearchView.setOnQueryTextListener(object : android.widget.SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?) = false
+            override fun onQueryTextChange(newText: String?): Boolean {
+                applyFilter(newText ?: "")
+                return true
             }
-        )
-        ticketsListView.adapter = adapter
+        })
+
         updateStats(currentTickets)
     }
 
@@ -370,6 +383,13 @@ class ScannerDetailActivity : AppCompatActivity() {
                 clusterStart = todas[i]
                 break
             }
+        }
+
+        // Si la boleta inmediatamente anterior al clusterStart está cerca (gap ≤ 10),
+        // extender el análisis hacia atrás — podría haber faltantes entre ambas.
+        val idxCluster = todas.indexOf(clusterStart)
+        if (idxCluster > 0 && clusterStart - todas[idxCluster - 1] <= 10) {
+            clusterStart = todas[idxCluster - 1]
         }
 
         val end = todas.last()
