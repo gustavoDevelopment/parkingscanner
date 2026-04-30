@@ -267,28 +267,24 @@ class ScannerDetailActivity : AppCompatActivity() {
         var countQr = 0
         var countAnulado = 0
         var total = 0.0
+        var totalEfectivo = 0.0
         var totalQr = 0.0
         var totalAnulado = 0.0
 
         tickets.forEach { ticket ->
             val medioPago = CatalogoMediosPago.obtenerPorCodigo(ticket.medioPagoCodigo)
+            val amt = effectiveAmount(ticket.total, ticket.tiempo)
 
             // Check tipo name FIRST so QR is never misclassified by computa flag
             when {
-                medioPago == null -> countEfectivo++
-                medioPago.tipo.contains("qr", ignoreCase = true) -> {
-                    countQr++
-                    totalQr += effectiveAmount(ticket.total, ticket.tiempo)
-                }
-                !medioPago.computa || medioPago.tipo.contains("anulado", ignoreCase = true) -> {
-                    countAnulado++
-                    totalAnulado += effectiveAmount(ticket.total, ticket.tiempo)
-                }
-                else -> countEfectivo++
+                medioPago == null -> { countEfectivo++; totalEfectivo += amt }
+                medioPago.tipo.contains("qr", ignoreCase = true) -> { countQr++; totalQr += amt }
+                !medioPago.computa || medioPago.tipo.contains("anulado", ignoreCase = true) -> { countAnulado++; totalAnulado += amt }
+                else -> { countEfectivo++; totalEfectivo += amt }
             }
 
             if (medioPago == null || medioPago.computa) {
-                total += effectiveAmount(ticket.total, ticket.tiempo)
+                total += amt
             }
         }
 
@@ -297,7 +293,7 @@ class ScannerDetailActivity : AppCompatActivity() {
         }
         statsBoletasCount.text = "${tickets.size} boletas"
         statsTotal.text = "Total: $${copFormat.format(total)}"
-        legendEfectivo.text = "● Efectivo: $countEfectivo"
+        legendEfectivo.text = if (totalEfectivo > 0) "● Efectivo: $countEfectivo ($${copFormat.format(totalEfectivo)})" else "● Efectivo: $countEfectivo"
         legendQr.text = if (totalQr > 0) "● QR: $countQr ($${copFormat.format(totalQr)})" else "● QR: $countQr"
         legendAnulado.text = if (totalAnulado > 0) "● Anulado: $countAnulado ($${copFormat.format(totalAnulado)})" else "● Anulado: $countAnulado"
         legendAnulado.setTextColor(if (countAnulado > 0) android.graphics.Color.parseColor("#FF6D00") else android.graphics.Color.parseColor("#AAAAAA"))
@@ -669,10 +665,19 @@ class ScannerDetailActivity : AppCompatActivity() {
             if (tiempo.isNotEmpty()) {
                 displayText.append("Tiempo: $tiempo\n")
             }
-            
+
             val total = jsonObject.optString("total", "")
             if (total.isNotEmpty()) {
                 displayText.append("Total a Pagar: $total\n")
+            }
+
+            // Cross-validate tiempo vs total
+            val tiempoAmt = parseTiempoToAmount(tiempo)
+            val totalAmt = parseColombianAmount(total)
+            if (tiempoAmt > 0 && totalAmt > 0 && tiempoAmt != totalAmt) {
+                val copFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale("es", "CO")).apply { maximumFractionDigits = 0 }
+                displayText.append("\n⚠️ INCONSISTENCIA: tiempo sugiere \$${copFmt.format(tiempoAmt)} pero total dice \$${copFmt.format(totalAmt)}\n")
+                displayText.append("   Verifica el campo incorrecto antes de guardar.\n")
             }
             
             // Mostrar todos los campos adicionales que existan en el JSON

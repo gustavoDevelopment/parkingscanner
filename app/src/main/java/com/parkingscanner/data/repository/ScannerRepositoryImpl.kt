@@ -578,10 +578,17 @@ class ScannerRepositoryImpl(private val context: Context) : ScannerRepository {
 }
 
 fun effectiveAmount(total: String, tiempo: String): Double {
-    val hours = Regex("\\d+").find(tiempo)?.value?.toDoubleOrNull() ?: 0.0
-    val fromTiempo = hours * 1000.0
     val fromTotal = parseColombianAmount(total)
-    return if (fromTiempo > 0.0) fromTiempo else fromTotal
+    if (fromTotal > 0.0) return fromTotal
+    val lower = tiempo.lowercase()
+    val numbers = Regex("\\d+").findAll(tiempo).map { it.value.toDouble() }.toList()
+    if (numbers.isEmpty()) return 0.0
+    val fromTiempo = when {
+        lower.contains("minuto") && !lower.contains("hora") -> numbers[0] / 60.0 * 1000.0
+        lower.contains("hora") && lower.contains("minuto") && numbers.size >= 2 -> (numbers[0] + numbers[1] / 60.0) * 1000.0
+        else -> numbers[0] * 1000.0
+    }
+    return fromTiempo
 }
 
 fun parseColombianAmount(raw: String): Double {
